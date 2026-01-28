@@ -24,6 +24,7 @@ CREATE TYPE news_categories AS ENUM ('policy', 'economy', 'sport');
 CREATE TABLE news
 (
     id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    author_id          UUID REFERENCES users,
     title              TEXT NOT NULL,
     content            TEXT NOT NULL,
     category           news_categories,
@@ -44,14 +45,12 @@ CREATE TABLE comment
     last_modified_time BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())
 );
 
-CREATE TYPE reactions AS ENUM ('like', 'dislike', 'happy', 'sad');
-
 CREATE TABLE reaction
 (
     news_id       UUID REFERENCES news,
     user_id       UUID REFERENCES users,
     PRIMARY KEY (news_id, user_id),
-    type          reactions,
+    type          TEXT CHECK (type IN ('like', 'dislike', 'happy', 'sad')),
     creation_time BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())
 );
 
