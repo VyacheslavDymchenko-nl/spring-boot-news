@@ -1,104 +1,175 @@
-CREATE SCHEMA news_portal;
-SET SEARCH_PATH TO news_portal;
+create schema if not exists news_portal;
 
-CREATE TABLE users
+create table if not exists news_portal.users
 (
-    id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name     TEXT NOT NULL,
-    email    TEXT NOT NULL UNIQUE,
-    password TEXT NOT NULL
+    id                 uuid primary key default uuid_generate_v4(),
+    name               text not null,
+    email              text not null unique,
+    password           text not null,
+    moderated_by       uuid references news_portal.users,
+    creation_time      bigint,
+    last_modified_time bigint
 );
 
-CREATE TABLE channel
+create table if not exists news_portal.channel
 (
-    id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    author_id          UUID REFERENCES users,
-    name               TEXT NOT NULL,
-    moderated_by       UUID REFERENCES users,
-    creation_time      BIGINT           DEFAULT EXTRACT(EPOCH FROM NOW()),
-    last_modified_time BIGINT           DEFAULT EXTRACT(EPOCH FROM NOW())
+    id                 uuid primary key default uuid_generate_v4(),
+    authorId           uuid references news_portal.users,
+    name               text not null,
+    moderated_by       uuid references news_portal.users,
+    creation_time      bigint,
+    last_modified_time bigint
 );
 
-CREATE TYPE news_categories AS ENUM ('policy', 'economy', 'sport');
+create type news_portal.news_categories as enum ('policy', 'economy', 'sport');
 
-CREATE TABLE news
+create table if not exists news_portal.news
 (
-    id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    author_id          UUID REFERENCES users,
-    title              TEXT NOT NULL,
-    content            TEXT NOT NULL,
+    id                 uuid primary key default gen_random_uuid(),
+    authorId           uuid references news_portal.users,
+    title              text not null,
+    content            text not null,
     category           news_categories,
-    channel_id         UUID REFERENCES channel,
-    moderated_by       UUID REFERENCES users,
-    creation_time      BIGINT           DEFAULT EXTRACT(EPOCH FROM NOW()),
-    last_modified_time BIGINT           DEFAULT EXTRACT(EPOCH FROM NOW())
+    channel_id         uuid references news_portal.channel,
+    moderated_by       uuid references news_portal.users,
+    creation_time      bigint,
+    last_modified_time bigint
 );
 
-CREATE TABLE comment
+create table if not exists news_portal.comment
 (
-    user_id            UUID REFERENCES users,
-    news_id            UUID REFERENCES news,
-    PRIMARY KEY (user_id, news_id),
-    text               TEXT NOT NULL,
-    moderated_by       UUID REFERENCES users,
-    creation_time      BIGINT DEFAULT EXTRACT(EPOCH FROM NOW()),
-    last_modified_time BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())
+    user_id            uuid references news_portal.users,
+    newsId             uuid references news_portal.news,
+    primary key (user_id, newsId),
+    text               text not null,
+    moderated_by       uuid references news_portal.users,
+    creation_time      bigint,
+    last_modified_time bigint
 );
 
-CREATE TABLE reaction
+create type news_portal.reaction_types as enum ('like', 'dislike', 'happy', 'sad');
+
+create table if not exists news_portal.reaction
 (
-    news_id       UUID REFERENCES news,
-    user_id       UUID REFERENCES users,
-    PRIMARY KEY (news_id, user_id),
-    type          TEXT CHECK (type IN ('like', 'dislike', 'happy', 'sad')),
-    creation_time BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())
+    newsId             uuid references news_portal.news,
+    user_id            uuid references news_portal.users,
+    primary key (newsId, user_id),
+    type               reaction_types,
+    moderated_by       uuid references news_portal.users,
+    creation_time      bigint,
+    last_modified_time bigint
 );
 
-CREATE TABLE moderator
+create table if not exists news_portal.moderator
 (
-    user_id    UUID REFERENCES users,
-    channel_id UUID REFERENCES channel,
-    PRIMARY KEY (user_id, channel_id)
+    user_id            uuid references news_portal.users,
+    channel_id         uuid references news_portal.channel,
+    primary key (user_id, channel_id),
+    moderated_by       uuid references news_portal.users,
+    creation_time      bigint,
+    last_modified_time bigint
 );
 
-
-CREATE FUNCTION news_edited() RETURNS trigger AS
-$news_edited$
-BEGIN
-    NEW.last_modified_time := EXTRACT(EPOCH FROM NOW());
-END;
-$news_edited$ LANGUAGE plpgsql;
-
-CREATE TRIGGER news_edited
-    AFTER UPDATE
-    ON news
-    FOR EACH ROW
-EXECUTE FUNCTION news_edited();
+create function news_portal.set_creation_time() returns trigger as
+$set_creation_time$
+begin
+    new.creation_time := extract(epoch from now()) * 1000;
+    new.last_modified_time := new.creation_time;
+    return new;
+end
+$set_creation_time$ language plpgsql;
 
 
-CREATE FUNCTION comment_edited() RETURNS trigger AS
-$comment_edited$
-BEGIN
-    NEW.last_modified_time := EXTRACT(EPOCH FROM NOW());
-END;
-$comment_edited$ LANGUAGE plpgsql;
 
-CREATE TRIGGER comment_edited
-    AFTER UPDATE
-    ON news
-    FOR EACH ROW
-EXECUTE FUNCTION comment_edited();
+create function news_portal.update_last_modified_time() returns trigger as
+$update_last_modified_time$
+begin
+    new.last_modified_time := extract(epoch from now()) * 1000;
+    return new;
+end;
+$update_last_modified_time$ language plpgsql;
 
 
-CREATE FUNCTION channel_edited() RETURNS trigger AS
-$channel_edited$
-BEGIN
-    NEW.last_modified_time := EXTRACT(EPOCH FROM NOW());
-END;
-$channel_edited$ LANGUAGE plpgsql;
 
-CREATE TRIGGER channel_edited
-    AFTER UPDATE
-    ON news
-    FOR EACH ROW
-EXECUTE FUNCTION channel_edited();
+
+create trigger set_users_creation_time
+    before insert
+    on news_portal.users
+    for each row
+execute function news_portal.set_creation_time();
+
+create trigger update_users_last_modified_time
+    before update
+    on news_portal.users
+    for each row
+execute function news_portal.update_last_modified_time();
+
+
+
+create trigger set_channel_creation_time
+    before insert
+    on news_portal.channel
+    for each row
+execute function news_portal.set_creation_time();
+
+create trigger update_channel_last_modified_time
+    before update
+    on news_portal.channel
+    for each row
+execute function news_portal.update_last_modified_time();
+
+
+
+create trigger set_news_creation_time
+    before insert
+    on news_portal.news
+    for each row
+execute function news_portal.set_creation_time();
+
+create trigger update_news_last_modified_time
+    before update
+    on news_portal.news
+    for each row
+execute function news_portal.update_last_modified_time();
+
+
+
+create trigger set_comment_creation_time
+    before insert
+    on news_portal.comment
+    for each row
+execute function news_portal.set_creation_time();
+
+create trigger update_comment_last_modified_time
+    before update
+    on news_portal.comment
+    for each row
+execute function news_portal.update_last_modified_time();
+
+
+
+create trigger set_reaction_creation_time
+    before insert
+    on news_portal.reaction
+    for each row
+execute function news_portal.set_creation_time();
+
+create trigger update_reaction_last_modified_time
+    before update
+    on news_portal.reaction
+    for each row
+execute function news_portal.update_last_modified_time();
+
+
+
+create trigger set_moderator_creation_time
+    before insert
+    on news_portal.moderator
+    for each row
+execute function news_portal.set_creation_time();
+
+create trigger update_moderator_last_modified_time
+    before update
+    on news_portal.moderator
+    for each row
+execute function news_portal.update_last_modified_time();
